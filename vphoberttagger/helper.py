@@ -6,10 +6,6 @@ import logging
 import torch
 import numpy as np
 
-import matplotlib.pyplot as plt
-
-from sklearn.metrics import confusion_matrix
-
 
 def set_ramdom_seed(seed: int):
     random.seed(seed)
@@ -102,7 +98,12 @@ def plot_confusion_matrix(y_true, y_pred, classes, labels,
                           normalize=False,
                           title=None,
                           output_dir='./',
-                          cmap=plt.cm.Blues):
+                          cmap=None):
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import confusion_matrix
+    if cmap is None:
+        cmap = plt.cm.Blues
+
     if normalize:
         title = 'Normalized confusion matrix'
     else:

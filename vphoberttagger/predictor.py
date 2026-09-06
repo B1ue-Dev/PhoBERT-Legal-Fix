@@ -1,5 +1,6 @@
 from vphoberttagger.arguments import get_predict_argument
 from vphoberttagger.constant import LABEL_MAPPING, MODEL_MAPPING
+from vphoberttagger.models import PhoBertCrf
 from vphoberttagger.helper import normalize_text
 from vncorenlp import VnCoreNLP
 
@@ -30,10 +31,10 @@ class ViTagger(object):
             checkpoint_data = torch.load(model_path)
         args = checkpoint_data["args"]
         max_seq_len = args.max_seq_length
-        use_crf = True if 'crf' in args.model_arch else False
+        use_crf = True
         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False)
         config = AutoConfig.from_pretrained(args.model_name_or_path, num_labels=len(args.label2id))
-        model_clss = MODEL_MAPPING[args.model_name_or_path][args.model_arch]
+        model_clss = PhoBertCrf
         model = model_clss(config=config)
         model.load_state_dict(checkpoint_data['model'])
         model.to(device)

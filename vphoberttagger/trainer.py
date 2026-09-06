@@ -1,6 +1,7 @@
 import transformers
 
 from vphoberttagger.constant import LOGGER, MODEL_MAPPING, LABEL_MAPPING
+from vphoberttagger.models import PhoBertCrf
 from vphoberttagger.helper import set_ramdom_seed, plot_confusion_matrix, get_total_model_parameters
 from vphoberttagger.arguments import get_train_argument, get_test_argument
 from vphoberttagger.dataset import build_dataset
@@ -13,7 +14,7 @@ from prettytable import PrettyTable
 from tensorboardX import SummaryWriter
 from sklearn.metrics import classification_report
 from torch.utils.data import RandomSampler, DataLoader
-from transformers import AutoTokenizer, AutoConfig, get_cosine_schedule_with_warmup, RobertaForSequenceClassification
+from transformers import AutoTokenizer, AutoConfig, get_linear_schedule_with_warmup, RobertaForSequenceClassification
 
 import os
 import sys
@@ -115,9 +116,9 @@ def test():
     else:
         checkpoint_data = torch.load(args.model_path)
     configs = checkpoint_data['args']
-    use_crf = True if 'crf' in args.model_arch else False
+    use_crf = True
     tokenizer = AutoTokenizer.from_pretrained(configs.model_name_or_path)
-    model_clss = MODEL_MAPPING[configs.model_name_or_path][configs.model_arch]
+    model_clss = PhoBertCrf
     config = AutoConfig.from_pretrained(configs.model_name_or_path,
                                         num_labels=len(checkpoint_data['classes']),
                                         finetuning_task=configs.task)
@@ -200,7 +201,7 @@ def train():
     config = AutoConfig.from_pretrained(args.model_name_or_path,
                                         num_labels=len(args.label2id),
                                         finetuning_task=args.task)
-    model_clss = MODEL_MAPPING[args.model_name_or_path][args.model_arch]
+    model_clss = PhoBertCrf
     model = model_clss.from_pretrained(pretrained_model_name_or_path=args.model_name_or_path,
                                        config=config)
     model.resize_token_embeddings(len(tokenizer))
@@ -237,9 +238,11 @@ def train():
 
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
     train_steps_per_epoch = len(train_dataset) // args.train_batch_size
-    scheduler = get_cosine_schedule_with_warmup(optimizer,
-                                                num_warmup_steps=train_steps_per_epoch,
-                                                num_training_steps=args.epochs * train_steps_per_epoch)
+    total_train_steps = (train_steps_per_epoch * int(args.epochs)) // args.gradient_accumulation_steps
+    warmup_steps = int(args.warmup_proportion * total_train_steps)
+    scheduler = get_linear_schedule_with_warmup(optimizer,
+                                                num_warmup_steps=warmup_steps,
+                                                num_training_steps=total_train_steps)
     train_sampler = RandomSampler(train_dataset)
     train_iterator = DataLoader(train_dataset,
                                 sampler=train_sampler,
@@ -311,6 +314,56 @@ def train():
                  cur_epoch=0,
                  is_test=True,
                  output_dir=args.output_dir)
+
+def test():
+    args = get_test_argument()
+    if not args.no_cuda and torch.cuda.is_available():
+        device = 'cuda'
+    else:
+        device = 'cpu'
+
+    if not os.path.exists(args.model_path):
+        raise FileNotFoundError(f"Model checkpoint not found at: {args.model_path}")
+
+    LOGGER.info(f"Loading checkpoint from '{args.model_path}' on device '{device}'...")
+    checkpoint = torch.load(args.model_path, map_location=device)
+    train_args = checkpoint.get('args', None)
+
+    task = getattr(train_args, 'task', 'pap_ner') if train_args else 'pap_ner'
+    model_name_or_path = getattr(train_args, 'model_name_or_path', 'vinai/phobert-base') if train_args else 'vinai/phobert-base'
+    max_seq_length = getattr(train_args, 'max_seq_length', 256) if train_args else 256
+    classes = checkpoint.get('classes', LABEL_MAPPING[task]['label2id'])
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    config = AutoConfig.from_pretrained(model_name_or_path,
+                                        num_labels=len(classes),
+                                        finetuning_task=task)
+    model = PhoBertCrf.from_pretrained(pretrained_model_name_or_path=model_name_or_path,
+                                       config=config)
+    model.resize_token_embeddings(len(tokenizer))
+    model.load_state_dict(checkpoint['model'])
+    model.to(device)
+
+    num_workers = getattr(args, 'num_workers', getattr(args, 'num_worker', 0))
+    test_dataset = build_dataset(args.data_dir,
+                                 tokenizer,
+                                 label2id=classes,
+                                 header=LABEL_MAPPING[task]['header'],
+                                 dtype='test',
+                                 max_seq_len=max_seq_length,
+                                 device=device,
+                                 use_crf=True,
+                                 overwrite_data=args.overwrite_data)
+    test_iterator = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=num_workers)
+
+    output_dir = os.path.dirname(args.model_path) or './'
+    LOGGER.info(f"Running evaluation on test set ({len(test_dataset)} samples)...")
+    validate(model=model,
+             task=task,
+             iterator=test_iterator,
+             cur_epoch=0,
+             is_test=True,
+             output_dir=output_dir)
 
 
 if __name__ == "__main__":

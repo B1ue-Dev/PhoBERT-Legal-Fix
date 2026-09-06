@@ -15,13 +15,13 @@ def get_predict_argument():
 def get_test_argument():
     parser = ArgumentParser()
     parser.add_argument('type', choices=['train', 'test', 'predict', 'demo'],
-                        help='What processs to be run')
-    parser.add_argument("--data_dir", default='datasets/samples', type=str,
-                        help="The input data dir. Should contain the .txt files (or other data files) for the task.")
+                        help='What process to be run')
+    parser.add_argument("--data_dir", default='Dataset', type=str,
+                        help="The input data dir containing dataset files.")
     parser.add_argument("--model_path", default='outputs/best_model.pt', type=str,
                         help="")
     parser.add_argument("--overwrite_data", action='store_true', default=False,
-                        help="Whether not to overwirte splitted dataset")
+                        help="Whether not to overwrite splitted dataset")
     parser.add_argument("--batch_size", default=16, type=int,
                         help="Total batch size for eval.")
     parser.add_argument('--num_worker', type=int, default=2,
@@ -36,20 +36,18 @@ def get_train_argument():
     parser = ArgumentParser()
     parser.add_argument('type', choices=['train', 'test', 'predict', 'demo'],
                         help='What process to be run')
-    parser.add_argument("--task", default='vlsp2016', type=str, choices=['vlsp2016', 'vlsp2018_l1', 'vlsp2018_l2',
-                                                                         'vlsp2018_join', 'bds2022', 'covid19'],
-                        help="Training task selected in the list: [`vlsp2016`, `vlsp2018_l1`, `vlsp2018_l2`, "
-                             "`vlsp2018_join`].")
-    parser.add_argument("--data_dir", default='datasets/samples', type=str,
-                        help="The input data dir. Should contain the .csv files (or other data files) for the task.")
+    parser.add_argument("--task", default='pap_ner', type=str, choices=['pap_ner'],
+                        help="Training task: pap_ner (Vietnamese e-Government / Legal NER)")
+    parser.add_argument("--data_dir", default='Dataset', type=str,
+                        help="The input data dir. Should contain train_data.txt, dev_data.txt, test_data.txt")
     parser.add_argument("--overwrite_data", action='store_true', default=False,
-                        help="Whether not to overwirte splitted dataset")
+                        help="Whether not to overwrite splitted dataset")
     parser.add_argument("--load_weights", default=None, type=str,
                         help='Path of pretrained file.')
     parser.add_argument("--model_name_or_path", default='vinai/phobert-base', type=str,
                         help="Pre-trained model selected in the list: vinai/phobert-base, vinai/phobert-large...")
-    parser.add_argument("--model_arch", default='softmax', type=str, choices=['softmax', 'crf', 'lstm_crf'],
-                        help="Punctuation prediction model architecture selected in the list: softmax, crf, lstm_crf")
+    parser.add_argument("--model_arch", default='crf', type=str, choices=['crf'],
+                        help="Model architecture: PhoBERT + CRF for sequence tagging")
     parser.add_argument("--output_dir", default='outputs/', type=str,
                         help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument("--max_seq_length", default=256, type=int,
@@ -60,11 +58,11 @@ def get_train_argument():
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size", default=32, type=int,
                         help="Total batch size for eval.")
-    parser.add_argument("--learning_rate", default=1e-4, type=float,
-                        help="The initial learning rate for Adam.")
-    parser.add_argument("--classifier_learning_rate", default=3e-4, type=float,
-                        help="The initial learning rate for Adam.")
-    parser.add_argument("--epochs", default=100, type=int,
+    parser.add_argument("--learning_rate", default=2e-5, type=float,
+                        help="The initial learning rate for PhoBERT (paper: 2e-5).")
+    parser.add_argument("--classifier_learning_rate", default=1e-3, type=float,
+                        help="The initial learning rate for CRF and Linear layer (paper: 1e-3).")
+    parser.add_argument("--epochs", default=20, type=int,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--warmup_proportion", default=0.1, type=float,
                         help="Proportion of training to perform linear learning rate warmup for. "
@@ -75,8 +73,8 @@ def get_train_argument():
                         help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm.")
-    parser.add_argument("--early_stop", default=10.0, type=float,
-                        help="")
+    parser.add_argument("--early_stop", default=3.0, type=float,
+                        help="Early stopping patience in epochs.")
     parser.add_argument("--run_test", action='store_true', default=False,
                         help="Whether not to run test after train")
     parser.add_argument("--no_cuda", action='store_true', default=False,

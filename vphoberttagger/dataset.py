@@ -26,41 +26,31 @@ def build_dataset(data_dir: Union[str, os.PathLike],
                   label2id: List[str],
                   header: List[str],
                   dtype: str = 'train',
-                  max_seq_len:int = 256,
-                  device:str = 'cpu',
-                  use_crf: bool = False,
+                  max_seq_len: int = 256,
+                  device: str = 'cpu',
+                  use_crf: bool = True,
                   overwrite_data: bool = False) -> NerDataset:
-    if header == 'jsonl':
-        process_key = tokenizer.name_or_path+'/jsonl'
-        dfile_path = Path(data_dir + f'/{dtype}.jsonl')
-    else:
-        process_key = tokenizer.name_or_path
-        dfile_path = Path(data_dir+f'/{dtype}.txt')
+    data_path = Path(data_dir)
+    # Support both train_data.txt and train.txt naming conventions
+    dfile_candidates = [
+        data_path / f"{dtype}_data.txt",
+        data_path / f"{dtype}.txt"
+    ]
+    dfile_path = None
+    for candidate in dfile_candidates:
+        if candidate.exists():
+            dfile_path = candidate
+            break
+            
+    if dfile_path is None:
+        raise FileNotFoundError(f"Could not find {dtype} dataset file in {data_dir}. Looked for {[str(c) for c in dfile_candidates]}")
+
     cached_path = dfile_path.with_suffix('.cached')
+    process_key = tokenizer.name_or_path
     if not os.path.exists(cached_path) or overwrite_data:
         features = PROCESSOR_MAPPING[process_key](dfile_path, tokenizer, label2id, header, max_seq_len, use_crf=use_crf)
         torch.save(features, cached_path)
     else:
         features = torch.load(cached_path)
+        
     return NerDataset(features=features, device=device)
-
-
-# DEBUG
-if __name__ == '__main__':
-    from transformers import AutoTokenizer
-    from torch.utils.data import DataLoader
-    from vphoberttagger.constant import LABEL2ID_VLSP2018
-    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
-    ner_dataset = build_dataset('../datasets/vlsp2018',
-                                tokenizer,
-                                dtype='train',
-                                max_seq_len=128,
-                                device='cuda',
-                                use_crf=True,
-                                header=['token', 'tmp1', 'ner', 'tmp2'],
-                                overwrite_data=True,
-                                label2id=LABEL2ID_VLSP2018)
-    ner_iterator = DataLoader(ner_dataset, batch_size=12)
-    for batch in ner_iterator:
-        print(batch)
-        break
