@@ -89,15 +89,20 @@ def train_one_epoch(model, iterator, optim, cur_epoch: int, max_grad_norm: float
     model.train()
     tqdm_bar = tqdm(enumerate(iterator), total=len(iterator), desc=f'[TRAIN-EPOCH {cur_epoch}]')
     for idx, batch in tqdm_bar:
+        optim.zero_grad(set_to_none=True)
         outputs = model(**batch)
-        # backward pass
+        loss = outputs.loss
+        if not torch.isfinite(loss):
+            raise FloatingPointError(
+                f"Non-finite training loss at epoch {cur_epoch}, batch {idx}. "
+                "Lower the learning rate and restart from a clean checkpoint."
+            )
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_grad_norm)
-        optim.zero_grad()
-        outputs.loss.backward()
         optim.step()
         if scheduler:
             scheduler.step()
-        tr_loss += outputs.loss.detach().item()
+        tr_loss += loss.detach().item()
     epoch_loss = tr_loss / len(iterator)
     LOGGER.info(f"\t{'*' * 20}Train Summary{'*' * 20}")
     LOGGER.info(f"\tTraining Lr: {optim.param_groups[0]['lr']}; "
