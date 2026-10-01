@@ -30,10 +30,14 @@ class XLMRobertaCrf(XLMRobertaForTokenClassification):
         ).unsqueeze(1)
         seq_outputs = seq_outputs[range_vector, valid_ids]
         logits = self.classifier(self.dropout(seq_outputs))
-        mask = label_masks.bool()
-        seq_tags = self.crf.decode(logits, mask=mask)
+        # Match the mask representation accepted by the installed torchcrf
+        # implementation. Decoding accepts booleans, while its loss path
+        # expects the legacy uint8 mask used by the PhoBERT implementation.
+        decode_mask = label_masks != 0
+        loss_mask = label_masks.type(torch.uint8)
+        seq_tags = self.crf.decode(logits, mask=decode_mask)
 
         if labels is not None:
-            log_likelihood = self.crf(logits, labels, mask=mask)
+            log_likelihood = self.crf(logits, labels, mask=loss_mask)
             return NerOutput(loss=-log_likelihood, tags=seq_tags)
         return NerOutput(tags=seq_tags)
