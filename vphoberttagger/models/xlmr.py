@@ -15,6 +15,12 @@ class XLMRobertaCrf(XLMRobertaForTokenClassification):
         self.crf = CRF(config.num_labels, batch_first=True)
         self.init_weights()
 
+    def _init_weights(self, module):
+        """Initialize custom CRF parameters after HF weight materialization."""
+        super()._init_weights(module)
+        if isinstance(module, CRF):
+            module.reset_parameters()
+
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None,
                 valid_ids=None, label_masks=None):
         seq_outputs = self.roberta(
