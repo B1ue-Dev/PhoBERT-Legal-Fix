@@ -112,9 +112,9 @@ def test():
     device = 'cuda' if not args.no_cuda and torch.cuda.is_available() else 'cpu'
     assert os.path.exists(args.model_path), f'Checkpoint file `{args.model_path}` not exists!'
     if device == 'cpu':
-        checkpoint_data = torch.load(args.model_path, map_location='cpu')
+        checkpoint_data = torch.load(args.model_path, map_location='cpu', weights_only=False)
     else:
-        checkpoint_data = torch.load(args.model_path)
+        checkpoint_data = torch.load(args.model_path, weights_only=False)
     configs = checkpoint_data['args']
     use_crf = True
     tokenizer = AutoTokenizer.from_pretrained(configs.model_name_or_path)
@@ -210,9 +210,9 @@ def train():
     if args.load_weights is not None:
         LOGGER.info(f'Load pretrained model weights from "{args.load_weights}"')
         if device == 'cpu':
-            checkpoint_data = torch.load(args.load_weights, map_location='cpu')
+            checkpoint_data = torch.load(args.load_weights, map_location='cpu', weights_only=False)
         else:
-            checkpoint_data = torch.load(args.load_weights)
+            checkpoint_data = torch.load(args.load_weights, weights_only=False)
         model.load_state_dict(checkpoint_data['model'])
         checkpoint_data = None
 
@@ -304,9 +304,9 @@ def train():
                                      overwrite_data=args.overwrite_data)
         test_iterator = DataLoader(test_dataset, batch_size=args.eval_batch_size, num_workers=args.num_workers)
         if device == 'cpu':
-            checkpoint_data = torch.load(args.output_dir + f"/best_model.pt", map_location='cpu')
+            checkpoint_data = torch.load(args.output_dir + f"/best_model.pt", map_location='cpu', weights_only=False)
         else:
-            checkpoint_data = torch.load(args.output_dir + f"/best_model.pt")
+            checkpoint_data = torch.load(args.output_dir + f"/best_model.pt", weights_only=False)
         model.load_state_dict(checkpoint_data['model'])
         validate(model=model,
                  task=args.task,
@@ -326,7 +326,7 @@ def test():
         raise FileNotFoundError(f"Model checkpoint not found at: {args.model_path}")
 
     LOGGER.info(f"Loading checkpoint from '{args.model_path}' on device '{device}'...")
-    checkpoint = torch.load(args.model_path, map_location=device)
+    checkpoint = torch.load(args.model_path, map_location=device, weights_only=False)
     train_args = checkpoint.get('args', None)
 
     task = getattr(train_args, 'task', 'pap_ner') if train_args else 'pap_ner'

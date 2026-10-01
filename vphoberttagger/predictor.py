@@ -26,9 +26,9 @@ class ViTagger(object):
     @staticmethod
     def load_model(model_path: Union[str or os.PathLike],  device='cpu'):
         if device == 'cpu':
-            checkpoint_data = torch.load(model_path, map_location='cpu')
+            checkpoint_data = torch.load(model_path, map_location='cpu', weights_only=False)
         else:
-            checkpoint_data = torch.load(model_path)
+            checkpoint_data = torch.load(model_path, weights_only=False)
         args = checkpoint_data["args"]
         max_seq_len = args.max_seq_length
         use_crf = True

@@ -51,6 +51,8 @@ def build_dataset(data_dir: Union[str, os.PathLike],
         features = PROCESSOR_MAPPING[process_key](dfile_path, tokenizer, label2id, header, max_seq_len, use_crf=use_crf)
         torch.save(features, cached_path)
     else:
-        features = torch.load(cached_path)
+        # Dataset caches contain NerFeatures instances created locally above.
+        # PyTorch 2.6 defaults to weights_only=True, which rejects that class.
+        features = torch.load(cached_path, weights_only=False)
         
     return NerDataset(features=features, device=device)

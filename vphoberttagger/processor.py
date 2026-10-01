@@ -40,7 +40,6 @@ def convert_word_segment_examples_features(data_path: Union[str, os.PathLike],
                        encoding='utf-8',
                        skip_blank_lines=False,
                        names=header_names)
-    data.fillna(method="ffill")
     
     for row_idx, row in tqdm(data.iterrows(), total=len(data), desc=f"Load dataset {data_path}..."):
         if row.notna().token:
