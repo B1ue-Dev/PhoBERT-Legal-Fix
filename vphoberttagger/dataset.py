@@ -45,8 +45,12 @@ def build_dataset(data_dir: Union[str, os.PathLike],
     if dfile_path is None:
         raise FileNotFoundError(f"Could not find {dtype} dataset file in {data_dir}. Looked for {[str(c) for c in dfile_candidates]}")
 
-    cached_path = dfile_path.with_suffix('.cached')
     process_key = tokenizer.name_or_path
+    if process_key not in PROCESSOR_MAPPING:
+        raise ValueError(f"Unsupported model '{process_key}'. Supported models: {list(PROCESSOR_MAPPING)}")
+    cache_key = process_key.replace('/', '_').replace('\\', '_')
+    architecture_key = 'crf' if use_crf else 'token'
+    cached_path = dfile_path.with_suffix(f'.{cache_key}.{max_seq_len}.{architecture_key}.cached')
     if not os.path.exists(cached_path) or overwrite_data:
         features = PROCESSOR_MAPPING[process_key](dfile_path, tokenizer, label2id, header, max_seq_len, use_crf=use_crf)
         torch.save(features, cached_path)

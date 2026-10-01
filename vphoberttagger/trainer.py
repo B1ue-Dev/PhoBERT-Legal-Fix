@@ -1,7 +1,6 @@
 import transformers
 
 from vphoberttagger.constant import LOGGER, MODEL_MAPPING, LABEL_MAPPING
-from vphoberttagger.models import PhoBertCrf
 from vphoberttagger.helper import set_ramdom_seed, plot_confusion_matrix, get_total_model_parameters
 from vphoberttagger.arguments import get_train_argument, get_test_argument
 from vphoberttagger.dataset import build_dataset
@@ -22,6 +21,7 @@ import torch
 import time
 import datetime
 import itertools
+import json
 
 
 def save_model(args, saved_file, model):
@@ -56,13 +56,25 @@ def validate(model, task, iterator, cur_epoch: int, output_dir: Union[str, os.Pa
     if is_test:
         evaluate([LABEL_MAPPING[task]["id2label"][tag] for tag in eval_golds],
                  [LABEL_MAPPING[task]["id2label"][tag] for tag in eval_preds])
-        reports: dict = classification_report(eval_golds, eval_preds,
-                                              output_dict=False,
-                                              zero_division=0,
-                                              digits=4,
-                                              target_names=LABEL_MAPPING[task]["label2id"])
-        LOGGER.info(reports)
         label_index_to_print = list(range(len(LABEL_MAPPING[task]["label2id"])))
+        report_data = classification_report(
+            eval_golds,
+            eval_preds,
+            labels=label_index_to_print,
+            output_dict=True,
+            zero_division=0,
+            target_names=LABEL_MAPPING[task]["label2id"],
+        )
+        LOGGER.info(classification_report(
+            eval_golds,
+            eval_preds,
+            labels=label_index_to_print,
+            zero_division=0,
+            digits=4,
+            target_names=LABEL_MAPPING[task]["label2id"],
+        ))
+        with open(os.path.join(output_dir, 'classification_report.json'), 'w', encoding='utf-8') as report_file:
+            json.dump(report_data, report_file, ensure_ascii=False, indent=2)
         plot_confusion_matrix(eval_golds, eval_preds,
                               classes=LABEL_MAPPING[task]["label2id"],
                               labels=label_index_to_print,
@@ -123,7 +135,7 @@ def test():
     configs = checkpoint_data['args']
     use_crf = True
     tokenizer = AutoTokenizer.from_pretrained(configs.model_name_or_path)
-    model_clss = PhoBertCrf
+    model_clss = MODEL_MAPPING[configs.model_name_or_path]['crf']
     config = AutoConfig.from_pretrained(configs.model_name_or_path,
                                         num_labels=len(checkpoint_data['classes']),
                                         finetuning_task=configs.task)
@@ -197,7 +209,7 @@ def train():
                                  tokenizer,
                                  label2id=args.label2id,
                                  header=LABEL_MAPPING[args.task]['header'],
-                                 dtype='test',
+                                 dtype='dev',
                                  max_seq_len=args.max_seq_length,
                                  device=device,
                                  use_crf=use_crf,
@@ -206,7 +218,7 @@ def train():
     config = AutoConfig.from_pretrained(args.model_name_or_path,
                                         num_labels=len(args.label2id),
                                         finetuning_task=args.task)
-    model_clss = PhoBertCrf
+    model_clss = MODEL_MAPPING[args.model_name_or_path]['crf']
     model = model_clss.from_pretrained(pretrained_model_name_or_path=args.model_name_or_path,
                                        config=config)
     model.resize_token_embeddings(len(tokenizer))
@@ -222,10 +234,7 @@ def train():
         checkpoint_data = None
 
     no_decay = ['bias', 'LayerNorm.weight', 'LayerNorm.bias']
-    if args.model_name_or_path == 'vinai/phobert-base':
-        bert_param_optimizer = list(model.roberta.named_parameters())
-    else:
-        bert_param_optimizer = list(model.bert.named_parameters())
+    bert_param_optimizer = list(model.roberta.named_parameters())
     ner_param_optimizer = list(model.classifier.named_parameters())
     if 'lstm' in args.model_arch:
         ner_param_optimizer.extend(list(model.lstm.named_parameters()))
@@ -343,7 +352,8 @@ def test():
     config = AutoConfig.from_pretrained(model_name_or_path,
                                         num_labels=len(classes),
                                         finetuning_task=task)
-    model = PhoBertCrf.from_pretrained(pretrained_model_name_or_path=model_name_or_path,
+    model_clss = MODEL_MAPPING[model_name_or_path]['crf']
+    model = model_clss.from_pretrained(pretrained_model_name_or_path=model_name_or_path,
                                        config=config)
     model.resize_token_embeddings(len(tokenizer))
     model.load_state_dict(checkpoint['model'])

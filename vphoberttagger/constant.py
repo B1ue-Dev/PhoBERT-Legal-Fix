@@ -1,6 +1,6 @@
 from .helper import init_logger
-from vphoberttagger.models import PhoBertCrf
-from .processor import convert_word_segment_examples_features
+from vphoberttagger.models import PhoBertCrf, XLMRobertaCrf
+from .processor import convert_word_segment_examples_features, convert_xlmr_examples_features
 from datetime import datetime
 
 
@@ -19,6 +19,7 @@ LABEL2ID_PAP_NER = [
 PROCESSOR_MAPPING = {
     'vinai/phobert-base': convert_word_segment_examples_features,
     'vinai/phobert-large': convert_word_segment_examples_features,
+    'xlm-roberta-base': convert_xlmr_examples_features,
 }
 
 MODEL_MAPPING = {
@@ -27,7 +28,10 @@ MODEL_MAPPING = {
     },
     'vinai/phobert-large': {
         'crf': PhoBertCrf,
-    }
+    },
+    'xlm-roberta-base': {
+        'crf': XLMRobertaCrf,
+    },
 }
 
 LABEL_MAPPING = {

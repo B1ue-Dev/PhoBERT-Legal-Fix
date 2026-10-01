@@ -99,3 +99,90 @@ def convert_word_segment_examples_features(data_path: Union[str, os.PathLike],
         tag_ids = []
         
     return features
+
+
+def convert_xlmr_examples_features(data_path: Union[str, os.PathLike],
+                                   tokenizer,
+                                   label2id,
+                                   header_names: List[str],
+                                   max_seq_len: int = 256,
+                                   use_crf: bool = True) -> List[NerFeatures]:
+    """Build word-aligned XLM-R features from the word-segmented CoNLL files.
+
+    XLM-R uses SentencePiece rather than PhoBERT's ``@@`` continuation marker,
+    so labels are aligned through the fast tokenizer's ``word_ids`` mapping.
+    """
+    if not tokenizer.is_fast:
+        raise ValueError("XLM-R training requires a fast tokenizer for word alignment.")
+
+    features = []
+    tokens = []
+    tag_ids = []
+    data = pd.read_csv(
+        data_path,
+        sep=r'\s+',
+        encoding='utf-8',
+        skip_blank_lines=False,
+        names=header_names,
+    )
+
+    def append_sentence(sentence_tokens, sentence_tag_ids):
+        if not sentence_tokens:
+            return
+
+        encoding = tokenizer(
+            sentence_tokens,
+            is_split_into_words=True,
+            padding='max_length',
+            truncation=True,
+            max_length=max_seq_len,
+        )
+        input_length = len(encoding.input_ids)
+        valid_ids = np.zeros(input_length, dtype=int)
+        label_masks = np.zeros(input_length, dtype=int)
+        valid_labels = np.ones(input_length, dtype=int) * -100
+        aligned_labels = []
+        previous_word_id = None
+
+        for token_index, word_id in enumerate(encoding.word_ids()):
+            if word_id is None or word_id == previous_word_id:
+                continue
+            previous_word_id = word_id
+            if word_id >= len(sentence_tag_ids) or len(aligned_labels) >= input_length:
+                break
+            aligned_index = len(aligned_labels)
+            valid_ids[aligned_index] = token_index
+            label_masks[aligned_index] = 1
+            aligned_labels.append(sentence_tag_ids[word_id])
+            valid_labels[token_index] = sentence_tag_ids[word_id]
+
+        if not aligned_labels:
+            raise ValueError(f"Could not align an XLM-R sentence: {' '.join(sentence_tokens)}")
+
+        labels = np.zeros(input_length, dtype=int)
+        labels[:len(aligned_labels)] = aligned_labels
+        items = dict(encoding.items())
+        if 'token_type_ids' not in items:
+            items['token_type_ids'] = [0] * input_length
+        items['labels'] = labels if use_crf else valid_labels
+        items['valid_ids'] = valid_ids
+        items['label_masks'] = label_masks if use_crf else (valid_labels != -100).astype(int)
+        features.append(NerFeatures(**items))
+
+        for key, value in items.items():
+            assert len(value) == max_seq_len, (
+                f"Expected length of {key} is {max_seq_len} but got {len(value)}"
+            )
+
+    for row_idx, row in tqdm(data.iterrows(), total=len(data), desc=f"Load dataset {data_path}..."):
+        if row.notna().token:
+            tokens.append(row.token.strip().replace(' ', '_'))
+            tag_ids.append(label2id.index(row.ner.strip()))
+            if row_idx != len(data) - 1:
+                continue
+
+        append_sentence(tokens, tag_ids)
+        tokens = []
+        tag_ids = []
+
+    return features

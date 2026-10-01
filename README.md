@@ -101,6 +101,33 @@ python main.py train \
 ```
 *(Hoặc chạy script: `bash ./train.sh`)*
 
+### Benchmark XLM-RoBERTa
+
+XLM-R uses the same PAP_NER train/dev/test split, but requires a separate
+word-aligned cache. The training command below writes independent benchmark
+artifacts and leaves the PhoBERT experiment untouched:
+
+```bash
+python main.py train \
+    --task pap_ner \
+    --data_dir ./Dataset \
+    --model_name_or_path xlm-roberta-base \
+    --model_arch crf \
+    --output_dir outputs/xlmr-base \
+    --max_seq_length 256 \
+    --train_batch_size 4 \
+    --eval_batch_size 4 \
+    --learning_rate 2e-5 \
+    --classifier_learning_rate 1e-4 \
+    --epochs 4 \
+    --early_stop 3 \
+    --run_test
+```
+
+The final test run writes `best_model.pt`, `classification_report.json`, and
+`confusion_matrix.png` under the selected output directory. Model selection is
+performed on `dev_data.txt`; `test_data.txt` is reserved for final reporting.
+
 ### 3. Đánh giá trên tập Test (Testing):
 ```bash
 python main.py test --data_dir ./Dataset --model_path outputs/best_model.pt

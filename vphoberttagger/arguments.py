@@ -45,7 +45,8 @@ def get_train_argument():
     parser.add_argument("--load_weights", default=None, type=str,
                         help='Path of pretrained file.')
     parser.add_argument("--model_name_or_path", default='vinai/phobert-base', type=str,
-                        help="Pre-trained model selected in the list: vinai/phobert-base, vinai/phobert-large...")
+                        choices=['vinai/phobert-base', 'vinai/phobert-large', 'xlm-roberta-base'],
+                        help="Pre-trained encoder for NER training.")
     parser.add_argument("--model_arch", default='crf', type=str, choices=['crf'],
                         help="Model architecture: PhoBERT + CRF for sequence tagging")
     parser.add_argument("--output_dir", default='outputs/', type=str,
