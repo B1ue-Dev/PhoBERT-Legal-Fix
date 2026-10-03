@@ -2,6 +2,8 @@ import os
 import re
 import random
 import logging
+import csv
+import json
 
 import torch
 import numpy as np
@@ -157,4 +159,59 @@ def plot_confusion_matrix(y_true, y_pred, classes, labels,
                     color="white" if cm[i, j] > thresh else "black")
     fig.tight_layout()
     plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'))
+    plt.close(fig)
     return ax
+
+
+def write_benchmark_artifacts(output_dir, metadata, metrics, bio_report):
+    """Write portable benchmark files after a strict PAP_NER evaluation."""
+    from pathlib import Path
+    import matplotlib.pyplot as plt
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    result = {
+        'benchmark': 'PAP_NER strict entity evaluation',
+        'metadata': metadata,
+        'metrics': metrics,
+        'bio_classification_report': bio_report,
+    }
+    with (output_path / 'benchmark_results.json').open('w', encoding='utf-8') as output_file:
+        json.dump(result, output_file, ensure_ascii=False, indent=2)
+
+    entity_rows = []
+    for entity, scores in metrics['per_entity'].items():
+        entity_rows.append({'entity': entity, **scores})
+    with (output_path / 'entity_metrics.csv').open('w', encoding='utf-8', newline='') as output_file:
+        writer = csv.DictWriter(output_file, fieldnames=[
+            'entity', 'precision', 'recall', 'f1-score', 'support', 'predicted', 'correct'
+        ])
+        writer.writeheader()
+        writer.writerows(entity_rows)
+
+    entities = [row['entity'] for row in entity_rows]
+    f1_scores = [row['f1-score'] for row in entity_rows]
+    fig, axis = plt.subplots(figsize=(8, 4.5))
+    bars = axis.bar(entities, f1_scores, color='#3572A5')
+    axis.set_ylim(0, 1.05)
+    axis.set_ylabel('Strict F1')
+    axis.set_title('PAP_NER strict F1 by entity type')
+    for bar, score in zip(bars, f1_scores):
+        axis.text(bar.get_x() + bar.get_width() / 2, score + 0.015, f'{score:.4f}', ha='center', fontsize=9)
+    fig.tight_layout()
+    fig.savefig(output_path / 'entity_f1.png', dpi=180)
+    plt.close(fig)
+
+    summary = (
+        '# PAP_NER benchmark result\n\n'
+        f"- Encoder: `{metadata['model_name_or_path']}`\n"
+        f"- Architecture: `{metadata['model_arch']}`\n"
+        f"- Checkpoint: `{metadata['checkpoint']}`\n"
+        f"- Test sentences: {metadata['test_sentences']}\n"
+        f"- Strict entity micro Precision: {metrics['entity_strict_precision_micro']:.4f}\n"
+        f"- Strict entity micro Recall: {metrics['entity_strict_recall_micro']:.4f}\n"
+        f"- Strict entity micro F1: {metrics['entity_strict_micro_f1']:.4f}\n"
+        f"- Strict entity macro F1: {metrics['entity_strict_macro_f1']:.4f}\n"
+        f"- BIO token macro F1: {bio_report['macro avg']['f1-score']:.4f}\n"
+    )
+    (output_path / 'benchmark_summary.md').write_text(summary, encoding='utf-8')

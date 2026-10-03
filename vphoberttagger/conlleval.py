@@ -186,6 +186,60 @@ def evaluate(true_seqs, pred_seqs, verbose=True):
     return result
 
 
+def evaluate_detailed(true_sequences, pred_sequences):
+    """Return strict entity metrics suitable for a reproducible NER benchmark.
+
+    ``conlleval`` evaluates chunks in a flat tag stream.  We therefore insert
+    an ``O`` boundary after every sentence so that an entity cannot be counted
+    as continuing into the next sentence.  This is the usual strict NER
+    protocol: an entity is correct only when both its span and type match.
+    """
+    if len(true_sequences) != len(pred_sequences):
+        raise ValueError("Gold and predicted sentence counts do not match.")
+
+    true_tags, pred_tags = [], []
+    for gold, pred in zip(true_sequences, pred_sequences):
+        if len(gold) != len(pred):
+            raise ValueError("Gold and predicted token counts do not match.")
+        true_tags.extend(gold)
+        pred_tags.extend(pred)
+        true_tags.append('O')
+        pred_tags.append('O')
+
+    correct_chunks, true_chunks, pred_chunks, correct_counts, true_counts, pred_counts = count_chunks(
+        true_tags, pred_tags
+    )
+    precision, recall, f1 = get_result(
+        correct_chunks, true_chunks, pred_chunks, correct_counts, true_counts, pred_counts, verbose=False
+    )
+    entity_types = sorted(set(true_chunks) | set(pred_chunks))
+    per_entity = {}
+    for entity_type in entity_types:
+        entity_precision, entity_recall, entity_f1 = calc_metrics(
+            correct_chunks[entity_type], pred_chunks[entity_type], true_chunks[entity_type], percent=False
+        )
+        per_entity[entity_type] = {
+            'precision': entity_precision,
+            'recall': entity_recall,
+            'f1-score': entity_f1,
+            'support': true_chunks[entity_type],
+            'predicted': pred_chunks[entity_type],
+            'correct': correct_chunks[entity_type],
+        }
+    macro_f1 = sum(item['f1-score'] for item in per_entity.values()) / len(per_entity) if per_entity else 0.0
+    return {
+        'entity_strict_precision_micro': precision,
+        'entity_strict_recall_micro': recall,
+        'entity_strict_micro_f1': f1,
+        'entity_strict_macro_f1': macro_f1,
+        'per_entity': per_entity,
+        'tokens': sum(true_counts.values()),
+        'entities': sum(true_chunks.values()),
+        'predicted_entities': sum(pred_chunks.values()),
+        'correct_entities': sum(correct_chunks.values()),
+    }
+
+
 def evaluate_conll_file(fileIterator):
     true_seqs, pred_seqs = [], []
 

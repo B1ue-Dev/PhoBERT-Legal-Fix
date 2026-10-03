@@ -128,6 +128,22 @@ The final test run writes `best_model.pt`, `classification_report.json`, and
 `confusion_matrix.png` under the selected output directory. Model selection is
 performed on `dev_data.txt`; `test_data.txt` is reserved for final reporting.
 
+### PAP_NER benchmark outputs
+
+Every `test` run also creates these comparison-friendly artifacts in the same
+directory:
+
+- `benchmark_summary.md`: the headline **strict entity Micro F1** and Macro F1.
+- `benchmark_results.json`: machine-readable model metadata, strict entity
+  metrics, BIO metrics, and per-entity results.
+- `entity_metrics.csv` and `entity_f1.png`: precision, recall, F1, and support
+  for `CQ`, `ĐT`, `VBPL`, `NG`, and `SL`.
+
+For a fair PhoBERT-CRF versus XLM-R-CRF comparison, use the same
+`train_data.txt` / `dev_data.txt` / `test_data.txt`, seed, maximum sequence
+length, and training budget. Hardware may differ; record it, but compare the
+final test strict entity Micro F1 rather than training speed.
+
 ### 3. Đánh giá trên tập Test (Testing):
 ```bash
 python main.py test --data_dir ./Dataset --model_path outputs/best_model.pt

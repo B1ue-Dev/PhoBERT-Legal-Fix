@@ -1,7 +1,13 @@
-from vphoberttagger import LOGGER, Trainer, Predictor
-
 import sys
 import os
+
+# Windows PowerShell can otherwise default to a legacy code page which cannot
+# print PAP_NER's Vietnamese label ``ĐT``.
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, 'reconfigure'):
+        stream.reconfigure(encoding='utf-8', errors='replace')
+
+from vphoberttagger import LOGGER, Trainer, Predictor
 
 if __name__ == '__main__':
     if sys.argv[1] == 'train':

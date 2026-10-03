@@ -1,10 +1,11 @@
 import transformers
 
 from vphoberttagger.constant import LOGGER, MODEL_MAPPING, LABEL_MAPPING
-from vphoberttagger.helper import set_ramdom_seed, plot_confusion_matrix, get_total_model_parameters
+from vphoberttagger.helper import (set_ramdom_seed, plot_confusion_matrix, get_total_model_parameters,
+                                   write_benchmark_artifacts)
 from vphoberttagger.arguments import get_train_argument, get_test_argument
 from vphoberttagger.dataset import build_dataset
-from vphoberttagger.conlleval import evaluate
+from vphoberttagger.conlleval import evaluate, evaluate_detailed
 
 from tqdm import tqdm
 from pathlib import Path
@@ -38,6 +39,7 @@ def validate(model, task, iterator, cur_epoch: int, output_dir: Union[str, os.Pa
     model.eval()
     eval_loss = 0.0
     eval_golds, eval_preds = [], []
+    eval_gold_sentences, eval_pred_sentences = [], []
     # Run one step on sub-dataset
     with torch.no_grad():
         tqdm_desc = f'[EVAL- Epoch {cur_epoch}]'
@@ -45,17 +47,28 @@ def validate(model, task, iterator, cur_epoch: int, output_dir: Union[str, os.Pa
         for idx, batch in eval_bar:
             outputs = model(**batch)
             eval_loss += outputs.loss.detach().item()
-            active_accuracy = batch['label_masks'].view(-1) != 0
-            labels = torch.masked_select(batch['labels'].view(-1), active_accuracy)
-            eval_golds.extend(labels.detach().cpu().tolist())
-            if isinstance(outputs.tags[-1], list):
-                eval_preds.extend(list(itertools.chain(*outputs.tags)))
-            else:
-                eval_preds.extend(outputs.tags)
+            for row_index, predicted_tags in enumerate(outputs.tags):
+                token_count = int(batch['label_masks'][row_index].sum().item())
+                gold_tags = batch['labels'][row_index, :token_count].detach().cpu().tolist()
+                predicted_tags = list(predicted_tags)[:token_count]
+                if len(gold_tags) != len(predicted_tags):
+                    raise ValueError(
+                        f'Evaluation alignment failed: {len(gold_tags)} gold tags, '
+                        f'{len(predicted_tags)} predicted tags.'
+                    )
+                eval_golds.extend(gold_tags)
+                eval_preds.extend(predicted_tags)
+                eval_gold_sentences.append(gold_tags)
+                eval_pred_sentences.append(predicted_tags)
     epoch_loss = eval_loss / len(iterator)
     if is_test:
-        evaluate([LABEL_MAPPING[task]["id2label"][tag] for tag in eval_golds],
-                 [LABEL_MAPPING[task]["id2label"][tag] for tag in eval_preds])
+        gold_labels = [LABEL_MAPPING[task]["id2label"][tag] for tag in eval_golds]
+        predicted_labels = [LABEL_MAPPING[task]["id2label"][tag] for tag in eval_preds]
+        strict_metrics = evaluate_detailed(
+            [[LABEL_MAPPING[task]['id2label'][tag] for tag in sentence] for sentence in eval_gold_sentences],
+            [[LABEL_MAPPING[task]['id2label'][tag] for tag in sentence] for sentence in eval_pred_sentences],
+        )
+        evaluate(gold_labels, predicted_labels)
         label_index_to_print = list(range(len(LABEL_MAPPING[task]["label2id"])))
         report_data = classification_report(
             eval_golds,
@@ -81,6 +94,23 @@ def validate(model, task, iterator, cur_epoch: int, output_dir: Union[str, os.Pa
                               output_dir=output_dir,
                               title=f'Normalized confusion matrix of {task.upper()}',
                               normalize=True)
+        metadata = {
+            'task': task,
+            'model_name_or_path': getattr(model.config, '_name_or_path', 'unknown'),
+            'model_arch': 'crf',
+            'checkpoint': os.path.abspath(output_dir),
+            'test_sentences': len(eval_gold_sentences),
+            'evaluation_epoch': cur_epoch,
+        }
+        write_benchmark_artifacts(output_dir, metadata, strict_metrics, report_data)
+        LOGGER.info(
+            'Strict entity benchmark: Precision=%.4f; Recall=%.4f; Micro-F1=%.4f; Macro-F1=%.4f',
+            strict_metrics['entity_strict_precision_micro'],
+            strict_metrics['entity_strict_recall_micro'],
+            strict_metrics['entity_strict_micro_f1'],
+            strict_metrics['entity_strict_macro_f1'],
+        )
+        return strict_metrics
     else:
         reports: dict = classification_report(eval_golds, eval_preds,
                                               output_dict=True,
@@ -379,14 +409,3 @@ def test():
              cur_epoch=0,
              is_test=True,
              output_dir=output_dir)
-
-
-if __name__ == "__main__":
-    if sys.argv[1] == 'train':
-        LOGGER.info("Start TRAIN process...")
-        train()
-    elif sys.argv[1] == 'test':
-        LOGGER.info("Start TEST process...")
-        test()
-    else:
-        LOGGER.error(f'[ERROR] - `{sys.argv[1]}` not found!!!')
