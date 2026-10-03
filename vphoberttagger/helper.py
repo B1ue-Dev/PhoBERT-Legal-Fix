@@ -4,6 +4,7 @@ import random
 import logging
 import csv
 import json
+import sys
 
 import torch
 import numpy as np
@@ -15,12 +16,29 @@ def set_ramdom_seed(seed: int):
     torch.manual_seed(seed)
     
 
+class _UnicodeSafeStreamHandler(logging.StreamHandler):
+    """Avoid a Windows console code-page error from interrupting evaluation logs."""
+
+    def emit(self, record):
+        try:
+            message = self.format(record) + self.terminator
+            self.stream.write(message)
+            self.flush()
+        except UnicodeEncodeError:
+            encoding = getattr(self.stream, 'encoding', None) or 'utf-8'
+            safe_message = message.encode(encoding, errors='backslashreplace').decode(encoding)
+            self.stream.write(safe_message)
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
+
 def init_logger(log_file=None, log_file_level=logging.NOTSET):
     log_format = logging.Formatter("%(message)s")
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
 
-    console_handler = logging.StreamHandler()
+    console_handler = _UnicodeSafeStreamHandler(sys.stdout)
     console_handler.setFormatter(log_format)
     logger.handlers = [console_handler]
 

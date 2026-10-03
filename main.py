@@ -25,5 +25,3 @@ if __name__ == '__main__':
         print(comd)
         os.system(comd)
 
-else:
-        LOGGER.error(f'[ERROR] - `{sys.argv[1]}` not found!!!')
